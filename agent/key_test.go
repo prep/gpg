@@ -5,7 +5,6 @@ import (
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
-	"encoding/hex"
 	"testing"
 
 	// Silent imports to make the hash type in crypto.SignerOpts work.
@@ -19,12 +18,12 @@ import (
 func TestPublic(t *testing.T) {
 	keygrip := "FF47135C1C28599504C27AC6AE1117B6E02079BD"
 
-	keyInfo, err := conn.Key(keygrip)
+	key, err := conn.Key(keygrip)
 	if err != nil {
 		t.Fatalf("Key(%s): %s", keygrip, err)
 	}
 
-	if kg := gpg.Keygrip(keyInfo.Public()); kg != keygrip {
+	if kg := gpg.Keygrip(key.Public()); kg != keygrip {
 		t.Fatalf("expected keygrip %q, but got %q", keygrip, kg)
 	}
 }
@@ -85,17 +84,7 @@ func TestDecryptWithOAEP(t *testing.T) {
 	}
 }
 
-var signatures = []struct {
-	Hash      crypto.Hash
-	Signature string // The first 32 bytes of the signature
-}{
-	{crypto.MD5, "8ba8662fe385d1c6435a3842f659af9c"},
-	{crypto.SHA1, "b95f76bf0a693e2e1be58d02a618be1c"},
-	{crypto.SHA256, "3cd52395afb3d63dc8b9b1669230bdab"},
-}
-
-func TestSign(t *testing.T) {
-	msg := []byte("Hello World")
+func TestSignWithPKCS1v15(t *testing.T) {
 	keygrip := "C729393956A1361239C64EFB3DAC4D3735A003ED"
 
 	key, err := conn.Key(keygrip)
@@ -103,21 +92,43 @@ func TestSign(t *testing.T) {
 		t.Fatalf("Key(%s): %s", keygrip, err)
 	}
 
-	for _, signature := range signatures {
-		sig, err := key.sign(msg, crypto.Hash(signature.Hash))
-		if err != nil {
-			t.Errorf("Sign(): %s", err)
-			continue
-		}
+	msg := []byte("Hello World")
+	hashed := sha256.Sum256(msg)
 
-		if v := len(sig); v != 256 {
-			t.Errorf("signature has a length of %d, but expected 256 bytes", v)
-			continue
-		}
+	sig, err := key.Sign(nil, hashed[:], crypto.SHA256)
+	if err != nil {
+		t.Fatalf("Sign(%s): %s", keygrip, err)
+	}
 
-		if v := hex.EncodeToString(sig)[:32]; v != signature.Signature {
-			t.Errorf("expected signature didn't match: %s", v)
-			continue
-		}
+	rsaPub := key.publicKey.(rsa.PublicKey)
+	if err := rsa.VerifyPKCS1v15(&rsaPub, crypto.SHA256, hashed[:], sig); err != nil {
+		t.Fatalf("VerifyPKCS1v15(): %s", err)
+	}
+}
+
+func TestSignWithPSS(t *testing.T) {
+	keygrip := "C729393956A1361239C64EFB3DAC4D3735A003ED"
+
+	key, err := conn.Key(keygrip)
+	if err != nil {
+		t.Fatalf("Key(%s): %s", keygrip, err)
+	}
+
+	msg := []byte("Hello World")
+	hashed := sha256.Sum256(msg)
+
+	opts := &rsa.PSSOptions{
+		SaltLength: rsa.PSSSaltLengthAuto,
+		Hash:       crypto.SHA256,
+	}
+
+	sig, err := key.Sign(rand.Reader, hashed[:], opts)
+	if err != nil {
+		t.Fatalf("Sign(%s): %s", keygrip, err)
+	}
+
+	rsaPub := key.publicKey.(rsa.PublicKey)
+	if err := rsa.VerifyPSS(&rsaPub, crypto.SHA256, hashed[:], sig, opts); err != nil {
+		t.Fatalf("VerifyPSS(): %s", err)
 	}
 }
