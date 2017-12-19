@@ -113,57 +113,6 @@ func decodeRSAPublicKey(data string) (crypto.PublicKey, error) {
 	}
 }
 
-// (7:sig-val(3:rsa(1:s)))
-func decodeRSASignature(data []byte) ([]byte, error) {
-	exp, err := sexp.Unmarshal(data)
-	if err != nil {
-		return nil, err
-	}
-	if len(exp) != 2 {
-		return nil, ErrUnknownFormat
-	}
-
-	name, ok := exp[0].([]byte)
-	if !ok || string(name) != "sig-val" {
-		return nil, ErrNotSignature
-	}
-
-	algol, ok := exp[1].([]interface{})
-	if !ok {
-		return nil, ErrUnknownFormat
-	}
-	if len(algol) != 2 {
-		return nil, ErrUnknownFormat
-	}
-
-	algo, ok := algol[0].([]byte)
-	if !ok {
-		return nil, ErrUnknownFormat
-	}
-
-	switch string(algo) {
-	case "rsa":
-		l, ok := algol[1].([]interface{})
-		if !ok || len(l) != 2 {
-			return nil, ErrUnknownFormat
-		}
-
-		if name, ok := l[0].([]byte); !ok || string(name) != "s" {
-			return nil, ErrUnknownFormat
-		}
-
-		signature, ok := l[1].([]byte)
-		if !ok {
-			return nil, ErrUnknownFormat
-		}
-
-		return signature, nil
-
-	default:
-		return nil, fmt.Errorf("%s: unknown algorithm", string(algo))
-	}
-}
-
 // (enc-val(rsa(a%m)))
 func encodeRSACipherText(cyphertext []byte) ([]byte, error) {
 	sexpText := []interface{}{

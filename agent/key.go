@@ -3,10 +3,11 @@ package agent
 import (
 	"crypto"
 	"crypto/rsa"
-	"encoding/hex"
 	"errors"
-	"fmt"
 	"io"
+	"math/big"
+
+	internalrsa "github.com/prep/gpg/agent/internal/rsa"
 )
 
 // KeyType describes the type of the key.
@@ -50,42 +51,81 @@ func (key Key) Public() crypto.PublicKey {
 	return key.publicKey
 }
 
-// Decrypt decrypts ciphertext with priv. If opts is nil or of type
+// Decrypt decrypts ciphertext with this key. If opts is nil or of type
 // *PKCS1v15DecryptOptions then PKCS#1 v1.5 decryption is performed. Otherwise
 // opts must have type *OAEPOptions and OAEP decryption is done.
 //
 // This function is basically a copy of rsa.Decrypt().
 func (key Key) Decrypt(rand io.Reader, ciphertext []byte, opts crypto.DecrypterOpts) (plaintext []byte, err error) {
-	if opts == nil {
-		return decryptPKCS1v15(rand, key, ciphertext)
-	}
-
-	switch opts := opts.(type) {
-	case *rsa.OAEPOptions:
-		return decryptOAEP(opts.Hash.New(), rand, key, ciphertext, opts.Label)
-
-	case *rsa.PKCS1v15DecryptOptions:
-		if l := opts.SessionKeyLen; l > 0 {
-			plaintext = make([]byte, l)
-			if _, err := io.ReadFull(rand, plaintext); err != nil {
-				return nil, err
-			}
-			if err := decryptPKCS1v15SessionKey(rand, key, ciphertext, plaintext); err != nil {
-				return nil, err
-			}
-
-			return plaintext, nil
+	switch pub := key.publicKey.(type) {
+	case rsa.PublicKey:
+		priv := &internalrsa.PrivateKey{
+			PrivateKey: rsa.PrivateKey{
+				PublicKey: pub,
+			},
+			DecryptFunc: key.decrypt,
 		}
 
-		return decryptPKCS1v15(rand, key, ciphertext)
+		if opts == nil {
+			return internalrsa.DecryptPKCS1v15(rand, priv, ciphertext)
+		}
+
+		switch opts := opts.(type) {
+		case *rsa.OAEPOptions:
+			return internalrsa.DecryptOAEP(opts.Hash.New(), rand, priv, ciphertext, opts.Label)
+
+		case *rsa.PKCS1v15DecryptOptions:
+			if l := opts.SessionKeyLen; l > 0 {
+				plaintext = make([]byte, l)
+				if _, err := io.ReadFull(rand, plaintext); err != nil {
+					return nil, err
+				}
+				if err := internalrsa.DecryptPKCS1v15SessionKey(rand, priv, ciphertext, plaintext); err != nil {
+					return nil, err
+				}
+
+				return plaintext, nil
+			}
+
+			return internalrsa.DecryptPKCS1v15(rand, priv, ciphertext)
+
+		default:
+			return nil, errors.New("github.com/prep/gpg/agent: invalid options for Decrypt")
+		}
 
 	default:
-		return nil, errors.New("github.com/prep/gpg/agent: invalid options for Decrypt")
+		return nil, errors.New("github.com/prep/gpg/agent: unknown public key")
 	}
 }
 
-func (key Key) decrypt(ciphertext []byte) ([]byte, error) {
-	encCipherText, err := encodeRSACipherText(ciphertext)
+// Sign signs msg with this key, possibly using entropy from rand. If opts is
+// a *PSSOptions then the PSS algorithm will be used, otherwise PKCS#1 v1.5
+// will be used.
+//
+// This function is basically a copy of rsa.Sign().
+func (key Key) Sign(rand io.Reader, msg []byte, opts crypto.SignerOpts) (signature []byte, err error) {
+	switch pub := key.publicKey.(type) {
+	case rsa.PublicKey:
+		priv := &internalrsa.PrivateKey{
+			PrivateKey: rsa.PrivateKey{
+				PublicKey: pub,
+			},
+			DecryptFunc: key.decrypt,
+		}
+
+		if pssOpts, ok := opts.(*rsa.PSSOptions); ok {
+			return internalrsa.SignPSS(rand, priv, pssOpts.Hash, msg, pssOpts)
+		}
+
+		return internalrsa.SignPKCS1v15(rand, priv, opts.HashFunc(), msg)
+
+	default:
+		return nil, errors.New("github.com/prep/gpg/agent: unknown public key")
+	}
+}
+
+func (key Key) decrypt(c *big.Int) (m *big.Int, err error) {
+	encCipherText, err := encodeRSACipherText(c.Bytes())
 	if err != nil {
 		return nil, err
 	}
@@ -124,68 +164,10 @@ func (key Key) decrypt(ciphertext []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	return decodePlainText([]byte(response))
-}
-
-func (key Key) sign(msg []byte, opts crypto.SignerOpts) (signature []byte, err error) {
-	var hashType string
-
-	switch opts.HashFunc() {
-	case crypto.MD5:
-		hashType = "md5"
-	case crypto.RIPEMD160:
-		hashType = "rmd160"
-	case crypto.SHA1:
-		hashType = "sha1"
-	case crypto.SHA256:
-		hashType = "sha256"
-	case crypto.MD5SHA1:
-		hashType = "tls-md5sha1"
-	default:
-		return nil, fmt.Errorf("%v: unknown hash type", opts.HashFunc())
-	}
-
-	if !opts.HashFunc().Available() {
-		return nil, fmt.Errorf("%s: hash type is not available", hashType)
-	}
-
-	hash := opts.HashFunc().New()
-	hash.Write(msg)
-	sum := hex.EncodeToString(hash.Sum(nil))
-
-	key.conn.Lock()
-	defer key.conn.Unlock()
-
-	if err := key.conn.Raw(nil, "RESET"); err != nil {
+	plaintext, err := decodePlainText([]byte(response))
+	if err != nil {
 		return nil, err
 	}
 
-	if err := key.conn.Raw(nil, "SETKEY %s", key.Keygrip); err != nil {
-		return nil, err
-	}
-
-	if err := key.conn.Raw(nil, "SETHASH --hash=%s %s", hashType, sum); err != nil {
-		return nil, err
-	}
-
-	var response string
-	respFunc := func(respType, data string) error {
-		switch respType {
-		case "INQUIRE":
-			if err := key.conn.request("END"); err != nil {
-				return err
-			}
-
-		case "D":
-			response = data
-		}
-
-		return nil
-	}
-
-	if err := key.conn.Raw(respFunc, "PKSIGN"); err != nil {
-		return nil, err
-	}
-
-	return decodeRSASignature([]byte(response))
+	return (&big.Int{}).SetBytes(plaintext), nil
 }
