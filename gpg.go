@@ -18,6 +18,11 @@ func Keygrip(publicKey crypto.PublicKey) string {
 		sum.Write([]byte{0})
 		sum.Write(key.N.Bytes())
 		return strings.ToUpper(hex.EncodeToString(sum.Sum(nil)))
+
+	case *rsa.PublicKey:
+		sum.Write([]byte{0})
+		sum.Write(key.N.Bytes())
+		return strings.ToUpper(hex.EncodeToString(sum.Sum(nil)))
 	}
 
 	return ""
