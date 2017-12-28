@@ -17,3 +17,7 @@ There are a couple things *off* about this Go package, namely:
 TODO
 ----
 * There are possibly some unnecessary type conversions happening because `bufio.ReadString()` is used as opposed to `bufio.ReadBytes()`.
+
+License
+-------
+This software is distributed under the BSD-style license found in the LICENSE file.
