@@ -41,7 +41,7 @@ func decodePlainText(data []byte) ([]byte, error) {
 	return value, nil
 }
 
-// (10:public-key(3:rsa(1:n)(1:e)))
+// (public-key(rsa(n%n)(e%e)))
 func decodeRSAPublicKey(data string) (crypto.PublicKey, error) {
 	exp, err := sexp.Unmarshal([]byte(data))
 	if err != nil {
@@ -108,6 +108,57 @@ func decodeRSAPublicKey(data string) (crypto.PublicKey, error) {
 			N: (&big.Int{}).SetBytes(n),
 			E: int((&big.Int{}).SetBytes(e).Int64()),
 		}, nil
+
+	default:
+		return nil, fmt.Errorf("%s: unknown algorithm", string(algo))
+	}
+}
+
+// (sig-val(rsa(s%s)))
+func decodeRSASignature(data []byte) ([]byte, error) {
+	exp, err := sexp.Unmarshal(data)
+	if err != nil {
+		return nil, err
+	}
+	if len(exp) != 2 {
+		return nil, ErrUnknownFormat
+	}
+
+	name, ok := exp[0].([]byte)
+	if !ok || string(name) != "sig-val" {
+		return nil, ErrNotSignature
+	}
+
+	algol, ok := exp[1].([]interface{})
+	if !ok {
+		return nil, ErrUnknownFormat
+	}
+	if len(algol) != 2 {
+		return nil, ErrUnknownFormat
+	}
+
+	algo, ok := algol[0].([]byte)
+	if !ok {
+		return nil, ErrUnknownFormat
+	}
+
+	switch string(algo) {
+	case "rsa":
+		l, ok := algol[1].([]interface{})
+		if !ok || len(l) != 2 {
+			return nil, ErrUnknownFormat
+		}
+
+		if name, ok := l[0].([]byte); !ok || string(name) != "s" {
+			return nil, ErrUnknownFormat
+		}
+
+		signature, ok := l[1].([]byte)
+		if !ok {
+			return nil, ErrUnknownFormat
+		}
+
+		return signature, nil
 
 	default:
 		return nil, fmt.Errorf("%s: unknown algorithm", string(algo))
