@@ -133,15 +133,15 @@ func (key Key) decrypt(c *big.Int) (m *big.Int, err error) {
 	key.conn.Lock()
 	defer key.conn.Unlock()
 
-	if err := key.conn.Raw(nil, "RESET"); err != nil {
+	if err = key.conn.Raw(nil, "RESET"); err != nil {
 		return nil, err
 	}
 
-	if err := key.conn.Raw(nil, "HAVEKEY %s", key.Keygrip); err != nil {
+	if err = key.conn.Raw(nil, "HAVEKEY %s", key.Keygrip); err != nil {
 		return nil, err
 	}
 
-	if err := key.conn.Raw(nil, "SETKEY %s", key.Keygrip); err != nil {
+	if err = key.conn.Raw(nil, "SETKEY %s", key.Keygrip); err != nil {
 		return nil, err
 	}
 
@@ -149,7 +149,8 @@ func (key Key) decrypt(c *big.Int) (m *big.Int, err error) {
 	respFunc := func(respType, data string) error {
 		switch respType {
 		case "INQUIRE":
-			if err := key.conn.request("D %s\nEND\n", encode(string(encCipherText))); err != nil {
+
+			if err = key.conn.request("D %s\nEND\n", encode(string(encCipherText))); err != nil {
 				return err
 			}
 
@@ -160,7 +161,7 @@ func (key Key) decrypt(c *big.Int) (m *big.Int, err error) {
 		return nil
 	}
 
-	if err := key.conn.Raw(respFunc, "PKDECRYPT"); err != nil {
+	if err = key.conn.Raw(respFunc, "PKDECRYPT"); err != nil {
 		return nil, err
 	}
 

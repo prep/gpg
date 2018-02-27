@@ -85,7 +85,8 @@ func decodeRSAPublicKey(data string) (crypto.PublicKey, error) {
 			return nil, ErrUnknownFormat
 		}
 
-		if name, ok := nl[0].([]byte); !ok || string(name) != "n" {
+		var name []byte
+		if name, ok = nl[0].([]byte); !ok || string(name) != "n" {
 			return nil, ErrUnknownFormat
 		}
 
@@ -94,7 +95,7 @@ func decodeRSAPublicKey(data string) (crypto.PublicKey, error) {
 			return nil, ErrUnknownFormat
 		}
 
-		if name, ok := el[0].([]byte); !ok || string(name) != "e" {
+		if name, ok = el[0].([]byte); !ok || string(name) != "e" {
 			return nil, ErrUnknownFormat
 		}
 
