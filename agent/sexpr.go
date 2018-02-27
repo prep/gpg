@@ -149,7 +149,8 @@ func decodeRSASignature(data []byte) ([]byte, error) {
 			return nil, ErrUnknownFormat
 		}
 
-		if name, ok := l[0].([]byte); !ok || string(name) != "s" {
+		var name []byte
+		if name, ok = l[0].([]byte); !ok || string(name) != "s" {
 			return nil, ErrUnknownFormat
 		}
 
