@@ -3,7 +3,9 @@ package agent
 import (
 	"crypto"
 	"crypto/rsa"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"math/big"
 
@@ -117,14 +119,14 @@ func (key Key) Sign(rand io.Reader, msg []byte, opts crypto.SignerOpts) (signatu
 			return internalrsa.SignPSS(rand, priv, pssOpts.Hash, msg, pssOpts)
 		}
 
-		return internalrsa.SignPKCS1v15(rand, priv, opts.HashFunc(), msg)
+		return key.signPKCS1v15(msg, opts.HashFunc())
 
 	default:
 		return nil, errors.New("github.com/prep/gpg/agent: unknown public key")
 	}
 }
 
-func (key Key) decrypt(c *big.Int) (m *big.Int, err error) {
+func (key Key) decrypt(c *big.Int) (*big.Int, error) {
 	encCipherText, err := encodeRSACipherText(c.Bytes())
 	if err != nil {
 		return nil, err
@@ -171,4 +173,68 @@ func (key Key) decrypt(c *big.Int) (m *big.Int, err error) {
 	}
 
 	return (&big.Int{}).SetBytes(plaintext), nil
+}
+
+func (key Key) signPKCS1v15(msg []byte, opts crypto.SignerOpts) ([]byte, error) {
+	var hashType string
+	switch opts.HashFunc() {
+	case crypto.MD5:
+		hashType = "md5"
+	case crypto.RIPEMD160:
+		hashType = "rmd160"
+	case crypto.SHA1:
+		hashType = "sha1"
+	case crypto.SHA224:
+		hashType = "sha224"
+	case crypto.SHA256:
+		hashType = "sha256"
+	case crypto.SHA384:
+		hashType = "sha384"
+	case crypto.SHA512:
+		hashType = "sha512"
+	case crypto.MD5SHA1:
+		hashType = "tls-md5sha1"
+	default:
+		return nil, fmt.Errorf("%v: unknown hash type", opts.HashFunc())
+	}
+
+	if !opts.HashFunc().Available() {
+		return nil, fmt.Errorf("%s: hash type is not available", hashType)
+	}
+
+	key.conn.Lock()
+	defer key.conn.Unlock()
+
+	if err := key.conn.Raw(nil, "RESET"); err != nil {
+		return nil, err
+	}
+
+	if err := key.conn.Raw(nil, "SETKEY %s", key.Keygrip); err != nil {
+		return nil, err
+	}
+
+	if err := key.conn.Raw(nil, "SETHASH --hash=%s %s", hashType, hex.EncodeToString(msg)); err != nil {
+		return nil, err
+	}
+
+	var response string
+	respFunc := func(respType, data string) error {
+		switch respType {
+		case "INQUIRE":
+			if err := key.conn.request("END"); err != nil {
+				return err
+			}
+
+		case "D":
+			response = data
+		}
+
+		return nil
+	}
+
+	if err := key.conn.Raw(respFunc, "PKSIGN"); err != nil {
+		return nil, err
+	}
+
+	return decodeRSASignature([]byte(response))
 }
