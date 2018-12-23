@@ -104,7 +104,7 @@ func decodeRSAPublicKey(data string) (crypto.PublicKey, error) {
 			return nil, ErrUnknownFormat
 		}
 
-		return rsa.PublicKey{
+		return &rsa.PublicKey{
 			N: (&big.Int{}).SetBytes(n),
 			E: int((&big.Int{}).SetBytes(e).Int64()),
 		}, nil

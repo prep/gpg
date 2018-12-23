@@ -35,10 +35,10 @@ func TestDecryptWithPKCS1v15(t *testing.T) {
 		t.Fatalf("Key(%s): %s", keygrip, err)
 	}
 
-	pub := key.Public().(rsa.PublicKey)
+	pub := key.Public().(*rsa.PublicKey)
 	message := []byte("Hello World PKCS1v15")
 
-	ciphertext, err := rsa.EncryptPKCS1v15(rand.Reader, &pub, message)
+	ciphertext, err := rsa.EncryptPKCS1v15(rand.Reader, pub, message)
 	if err != nil {
 		t.Fatalf("EncryptPKCS1v15(): %s", err)
 	}
@@ -60,11 +60,11 @@ func TestDecryptWithOAEP(t *testing.T) {
 		t.Fatalf("Key(%s): %s", keygrip, err)
 	}
 
-	pub := key.Public().(rsa.PublicKey)
+	pub := key.Public().(*rsa.PublicKey)
 	message := []byte("Hello World OAEP")
 	label := []byte("label")
 
-	ciphertext, err := rsa.EncryptOAEP(sha256.New(), rand.Reader, &pub, message, label)
+	ciphertext, err := rsa.EncryptOAEP(sha256.New(), rand.Reader, pub, message, label)
 	if err != nil {
 		t.Fatalf("EncryptOAEP(): %s", err)
 	}
