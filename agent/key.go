@@ -60,10 +60,10 @@ func (key Key) Public() crypto.PublicKey {
 // This function is basically a copy of rsa.Decrypt().
 func (key Key) Decrypt(rand io.Reader, ciphertext []byte, opts crypto.DecrypterOpts) (plaintext []byte, err error) {
 	switch pub := key.publicKey.(type) {
-	case rsa.PublicKey:
+	case *rsa.PublicKey:
 		priv := &internalrsa.PrivateKey{
 			PrivateKey: rsa.PrivateKey{
-				PublicKey: pub,
+				PublicKey: *pub,
 			},
 			DecryptFunc: key.decrypt,
 		}
@@ -107,10 +107,10 @@ func (key Key) Decrypt(rand io.Reader, ciphertext []byte, opts crypto.DecrypterO
 // This function is basically a copy of rsa.Sign().
 func (key Key) Sign(rand io.Reader, msg []byte, opts crypto.SignerOpts) (signature []byte, err error) {
 	switch pub := key.publicKey.(type) {
-	case rsa.PublicKey:
+	case *rsa.PublicKey:
 		priv := &internalrsa.PrivateKey{
 			PrivateKey: rsa.PrivateKey{
-				PublicKey: pub,
+				PublicKey: *pub,
 			},
 			DecryptFunc: key.decrypt,
 		}
@@ -132,8 +132,8 @@ func (key Key) decrypt(c *big.Int) (*big.Int, error) {
 		return nil, err
 	}
 
-	key.conn.Lock()
-	defer key.conn.Unlock()
+	key.conn.mu.Lock()
+	defer key.conn.mu.Unlock()
 
 	if err = key.conn.Raw(nil, "RESET"); err != nil {
 		return nil, err
@@ -202,8 +202,8 @@ func (key Key) signPKCS1v15(msg []byte, opts crypto.SignerOpts) ([]byte, error) 
 		return nil, fmt.Errorf("%s: hash type is not available", hashType)
 	}
 
-	key.conn.Lock()
-	defer key.conn.Unlock()
+	key.conn.mu.Lock()
+	defer key.conn.mu.Unlock()
 
 	if err := key.conn.Raw(nil, "RESET"); err != nil {
 		return nil, err

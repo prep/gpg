@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
-	// "os"
+
 	"strings"
 	"sync"
 )
@@ -21,9 +21,9 @@ type ResponseFunc func(respType, data string) error
 
 // Conn represents a single connection to a GPG agent.
 type Conn struct {
-	c net.Conn
-	r *bufio.Reader
-	sync.Mutex
+	c  net.Conn
+	r  *bufio.Reader
+	mu sync.Mutex
 }
 
 // Dial connects to the specified unix domain socket and checks if there is a
@@ -51,7 +51,7 @@ func Dial(filename string, options []string) (*Conn, error) {
 // request sends a request to the pgp-agent and then returns its response.
 func (conn *Conn) request(format string, a ...interface{}) error {
 	req := fmt.Sprintf(format+"\n", a...)
-	fmt.Fprintf(debug, "> %s", req)
+	_, _ = fmt.Fprintf(debug, "> %s", req)
 
 	_, err := conn.c.Write([]byte(req))
 	return err
@@ -70,7 +70,7 @@ func (conn *Conn) response(f ResponseFunc) error {
 			return err
 		}
 
-		fmt.Fprintf(debug, "< %s", line)
+		_, _ = fmt.Fprintf(debug, "< %s", line)
 
 		line = strings.TrimSpace(line)
 		switch {
@@ -107,8 +107,8 @@ func (conn *Conn) response(f ResponseFunc) error {
 
 // Close this connection.
 func (conn *Conn) Close() error {
-	conn.Lock()
-	defer conn.Unlock()
+	conn.mu.Lock()
+	defer conn.mu.Unlock()
 
 	conn.r = nil
 	return conn.c.Close()
@@ -175,8 +175,8 @@ func (conn *Conn) Key(keygrip string) (Key, error) {
 		return keyScan(&key, data)
 	}
 
-	conn.Lock()
-	defer conn.Unlock()
+	conn.mu.Lock()
+	defer conn.mu.Unlock()
 
 	err := conn.Raw(respFunc, "KEYINFO --ssh-fpr %s", keygrip)
 	if err != nil {
@@ -208,8 +208,8 @@ func (conn *Conn) Keys() ([]Key, error) {
 		return nil
 	}
 
-	conn.Lock()
-	defer conn.Unlock()
+	conn.mu.Lock()
+	defer conn.mu.Unlock()
 
 	err := conn.Raw(respFunc, "KEYINFO --list --ssh-fpr")
 	if err != nil {
@@ -238,8 +238,8 @@ func (conn *Conn) Raw(f ResponseFunc, format string, a ...interface{}) error {
 
 // ReadKey returns the public key for the key with the specified keygrip.
 func (conn *Conn) ReadKey(keygrip string) (crypto.PublicKey, error) {
-	conn.Lock()
-	defer conn.Unlock()
+	conn.mu.Lock()
+	defer conn.mu.Unlock()
 
 	return conn.readKey(keygrip)
 }
@@ -277,8 +277,8 @@ func (conn *Conn) Version() (string, error) {
 		return nil
 	}
 
-	conn.Lock()
-	defer conn.Unlock()
+	conn.mu.Lock()
+	defer conn.mu.Unlock()
 
 	if err := conn.Raw(respFunc, "GETINFO version"); err != nil {
 		return "", err
