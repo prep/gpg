@@ -100,8 +100,8 @@ func TestSignWithPKCS1v15(t *testing.T) {
 		t.Fatalf("Sign(%s): %s", keygrip, err)
 	}
 
-	rsaPub := key.publicKey.(rsa.PublicKey)
-	if err := rsa.VerifyPKCS1v15(&rsaPub, crypto.SHA256, hashed[:], sig); err != nil {
+	rsaPub := key.publicKey.(*rsa.PublicKey)
+	if err := rsa.VerifyPKCS1v15(rsaPub, crypto.SHA256, hashed[:], sig); err != nil {
 		t.Fatalf("VerifyPKCS1v15(): %s", err)
 	}
 }
@@ -127,8 +127,8 @@ func TestSignWithPSS(t *testing.T) {
 		t.Fatalf("Sign(%s): %s", keygrip, err)
 	}
 
-	rsaPub := key.publicKey.(rsa.PublicKey)
-	if err := rsa.VerifyPSS(&rsaPub, crypto.SHA256, hashed[:], sig, opts); err != nil {
+	rsaPub := key.publicKey.(*rsa.PublicKey)
+	if err := rsa.VerifyPSS(rsaPub, crypto.SHA256, hashed[:], sig, opts); err != nil {
 		t.Fatalf("VerifyPSS(): %s", err)
 	}
 }
