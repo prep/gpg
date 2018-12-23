@@ -217,7 +217,7 @@ func (conn *Conn) Keys() ([]Key, error) {
 	}
 
 	for i, key := range keyList {
-		key.conn = conn
+		keyList[i].conn = conn
 		if keyList[i].publicKey, err = conn.readKey(key.Keygrip); err != nil {
 			return nil, err
 		}
