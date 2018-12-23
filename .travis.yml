@@ -1,32 +1,26 @@
-# Pick macOS because that build environment has a never version of GnuPG than
-# the Ubuntu ones.
-os: osx
+dist: xenial
 
 language: go
 go:
-  - 1.9
-  - master
+  - "1.x.x"
 
 # Install the dependencies.
 install:
   - go get -t -v ./...
 
-matrix:
-  # It's ok if our code fails on unstable development versions of Go.
-  allow_failures:
-    - go: master
-  # Don't wait for tip tests to finish. Mark the test run green if the
-  # tests pass on the stable versions of Go.
-  fast_finish: true
-
 notifications:
   email: false
 
+# Install GnuPG.
+before_install:
+  - sudo apt-get update
+  - sudo apt-get install -y gpgv2
+
+# Start the gpg-agent in the background before running the test suite.
 before_script:
   - gpg-agent --homedir testdata/gnupg --daemon
-  - GO_FILES=$(find . -iname '*.go' -type f | grep -v /vendor/)
 
 script:
+  - GO_FILES=$(find . -iname '*.go' -type f | grep -v /vendor/)
   - test -z $(gofmt -s -l $GO_FILES)
-  - go vet ./...
   - go test -v -race ./...
